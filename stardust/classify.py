@@ -514,7 +514,9 @@ def getSimTemp(theCID):
 def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              zminmax=[1.488,1.493], npoints=100, maxiter=10000,
              templateset='SNANA', excludetemplates=[],
-             nsteps_pdf=101, verbose=True):
+             nsteps_pdf=101, priors={'Ia':0.24, 'II':0.57, 'Ibc':0.19},
+             inflate_uncertainties=False,
+             verbose=True):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -552,14 +554,15 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                     allmodelnames = np.array(allmodelnamelist)
 
     logpriordict = {
-        'ia': np.log(0.24/len(iamodelnames)),
-        'ibc': np.log(0.19/len(ibcmodelnames)),
-        'ii': np.log(0.57/len(iimodelnames)),
+        'ia': np.log(priors['Ia']/len(iamodelnames)),
+        'ibc': np.log(priors['Ibc']/len(ibcmodelnames)),
+        'ii': np.log(priors['II']/len(iimodelnames)),
         }
     logz = {'Ia': [], 'II': [], 'Ibc': []}
     bestlogz = -np.inf
 
-    sn = inflateUncert(sn)
+    if inflate_uncertainties:
+        sn = inflateUncert(sn)
 
 #-------------------------------------------------------------------------------
     '''
@@ -615,15 +618,19 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     #parallelized code
     
     res=parallelize.foreach(allmodelnames,_parallel,[verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates])
-    print('------------------------------')
     dt = time.time() - tstart
-    print("dt=%i sec" %dt)
+    if verbose:
+        print('------------------------------')
+        print("dt=%i sec" %dt)
     res={res[i]['key']:res[i] for i in range(len(res))}
     for modelsource in allmodelnames:
-        print(modelsource)
+        if verbose:
+            print(modelsource)
         if res[modelsource]['sn'] is None:
             continue
-        outdict[modelsource] = {'sn': res[modelsource]['sn'], 'res': res[modelsource]['res'],
+        outdict[modelsource] = {'sn': res[modelsource]['sn'], 
+                                'fit': res[modelsource]['fit'],
+                                'res': res[modelsource]['res'],
                                 'pdf': res[modelsource]['pdf']}
         if res[modelsource]['res']['logz']>bestlogz :
             outdict['bestmodel'] = modelsource
@@ -684,27 +691,24 @@ def plot_maxlike_fit( fitdict, **kwarg ):
     res = fitdict['res']
     paramnames = res.vparam_names
     errors = res.errors
-    errdict = dict([ [paramnames[i],errors[i]] for i in range(len(errors))] )
-    plot_lc( sn, model=fit, errors=errdict, **kwarg )
+    #errdict = dict([ [paramnames[i],errors[i]] for i in range(len(errors))] )
+    #plot_lc( sn, model=fit, errors=errdict, **kwarg )
+    plot_lc( sn, model=fit, errors=errors, **kwarg )
 
-
-def plot_fits(classdict, nshow=2, verbose=False, **kwarg ):
+def plot_fits(classdict, nshow=2, verbose=False, templateset='SNANA',
+              **kwarg ):
     from matplotlib import cm
 
     plotting._cmap_wavelims = [5000, 17500]
     plotting._cmap = cm.gist_rainbow
 
     bestIamod, bestIbcmod, bestIImod = get_bestfit_modelnames(
-        classdict, verbose=verbose)
+        classdict, verbose=verbose, templateset=templateset)
     
-    #fitIa = classdict[bestIamod]['fit']
-    #fitIbc = classdict[bestIbcmod]['fit']
-    #fitII = classdict[bestIImod]['fit']
+    fitIa = classdict[bestIamod]['fit']
+    fitIbc = classdict[bestIbcmod]['fit']
+    fitII = classdict[bestIImod]['fit']
 
-    fitIa = classdict[bestIamod]['res']
-    fitIbc = classdict[bestIbcmod]['res']
-    fitII = classdict[bestIImod]['res']
-    
     sn = classdict[bestIamod]['sn']
     if nshow == 3:
         plot_lc( sn, model=[fitIa,fitIbc,fitII], model_label=['Ia','Ib/c','II'], **kwarg )
@@ -714,15 +718,21 @@ def plot_fits(classdict, nshow=2, verbose=False, **kwarg ):
         plot_lc(sn, model=[fitIa], model_label=['Ia'], **kwarg)
 
 
-def get_bestfit_modelnames(classdict, verbose=True):
+def get_bestfit_modelnames(classdict, templateset='SNANA',
+                           verbose=True):
     """ Extract the name of the best-fit model for each sub-class (Ia,Ib/c,II)
     by comparing the log(Z) likelihoods in the classification results.
 
     :param classdict: a dictionary of classification results
     :return:
     """
+    if templateset.lower()=='psnid':
+        subclassdict = SubClassDict_PSNID
+    else:
+        subclassdict = SubClassDict_SNANA
+
     IImodlist = [modname for modname in classdict.keys() if modname in
-                 SubClassDict_SNANA['ii'].keys()]
+                 subclassdict['ii'].keys()]
     IIlogzlist = [classdict[modname]['res']['logz'] for modname in IImodlist]
     ibestII = np.argmax(IIlogzlist)
     bestIImod = IImodlist[ibestII]
@@ -730,7 +740,7 @@ def get_bestfit_modelnames(classdict, verbose=True):
         print('Best II model : %s' % bestIImod)
 
     Ibcmodlist = [modname for modname in classdict.keys() if modname in
-                  SubClassDict_SNANA['ibc'].keys()]
+                  subclassdict['ibc'].keys()]
     Ibclogzlist = [classdict[modname]['res']['logz'] for modname in Ibcmodlist]
     ibestIbc = np.argmax(Ibclogzlist)
     bestIbcmod = Ibcmodlist[ibestIbc]
