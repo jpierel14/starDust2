@@ -1,4 +1,4 @@
-import parallelize
+import pyParz as parallelize
 import sys
 # Dictionary of sncosmo CCSN model names and their corresponding SN sub-type
 SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in SNANA)
@@ -231,7 +231,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     import os
 
     from scipy import interpolate, integrate
-    from sncosmo import _deprecated, fitting, Model, CCM89Dust
+    from sncosmo import fitting, Model, CCM89Dust
     import time
     tstart = time.time()
     # standardize the data column names and normalize to zpt=25 AB
@@ -468,21 +468,24 @@ def plot_marginal_pdfs( res, nbins=101, **kwargs):
 
     pl.draw()
 
+
 def _parallel(args):
     modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates=args
-    
-    sn, res, fit, priorfn = get_evidence(
-        sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
-        t0_range=t0_range, zminmax=zminmax,
-        npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1))
-    if nsteps_pdf:
-        pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
-                                verbose=max(0, verbose - 1))
-    else:
-        pdf = None
-
-    #del fit._source
-    outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
+    try:
+        sn, res, fit, priorfn = get_evidence(
+            sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
+            t0_range=t0_range, zminmax=zminmax,
+            npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1))
+        if nsteps_pdf:
+            pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
+                                    verbose=max(0, verbose - 1))
+        else:
+            pdf = None
+        #del fit._source
+        outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
+    except:
+        print("Some serious problem with %s, skipping..."%modelsource)
+        outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
     #({'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn})
     return(parallelize.parReturn(outdict))
 
@@ -615,8 +618,11 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     print('------------------------------')
     dt = time.time() - tstart
     print("dt=%i sec" %dt)
-    
+    res={res[i]['key']:res[i] for i in range(len(res))}
     for modelsource in allmodelnames:
+        print(modelsource)
+        if res[modelsource]['sn'] is None:
+            continue
         outdict[modelsource] = {'sn': res[modelsource]['sn'], 'res': res[modelsource]['res'],
                                 'pdf': res[modelsource]['pdf']}
         if res[modelsource]['res']['logz']>bestlogz :
@@ -690,10 +696,15 @@ def plot_fits(classdict, nshow=2, verbose=False, **kwarg ):
 
     bestIamod, bestIbcmod, bestIImod = get_bestfit_modelnames(
         classdict, verbose=verbose)
-    fitIa = classdict[bestIamod]['fit']
-    fitIbc = classdict[bestIbcmod]['fit']
-    fitII = classdict[bestIImod]['fit']
+    
+    #fitIa = classdict[bestIamod]['fit']
+    #fitIbc = classdict[bestIbcmod]['fit']
+    #fitII = classdict[bestIImod]['fit']
 
+    fitIa = classdict[bestIamod]['res']
+    fitIbc = classdict[bestIbcmod]['res']
+    fitII = classdict[bestIImod]['res']
+    
     sn = classdict[bestIamod]['sn']
     if nshow == 3:
         plot_lc( sn, model=[fitIa,fitIbc,fitII], model_label=['Ia','Ib/c','II'], **kwarg )
@@ -771,4 +782,4 @@ def getTheZerr(theFile): #gets the z error for the host galaxy
 	thereturn = float(thematch[1].strip())
 	return thereturn
 
-testClassification()
+#testClassification()
