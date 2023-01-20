@@ -4,7 +4,7 @@
 # should keep this content at the top.
 # ----------------------------------------------------------------------------
 from ._astropy_init import *
-from stardust import *
+from stardust import classify
 # ----------------------------------------------------------------------------
 
 if not _ASTROPY_SETUP_:
