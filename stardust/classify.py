@@ -1,5 +1,8 @@
 import pyParz as parallelize
-import sys,sncosmo
+import sys,sncosmo,os
+from astropy.table import Table
+import warnings
+warnings.simplefilter('ignore')
 # Dictionary of sncosmo CCSN model names and their corresponding SN sub-type
 SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in SNANA)
                                     'snana-2004hx':'IIP',  # sdss000018 PSNID
@@ -47,6 +50,24 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                                  },
                           'ia': {'salt3-nir':'Ia'},
                       }
+
+
+temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
+v19_key = {}
+for row in temp:
+    if row['type'] not in v19_key.keys():
+        v19_key[row['type']] = []
+    v19_key[row['type']].append(row['model'])
+
+for key in v19_key.keys():
+    if key.startswith('II'):
+        for mod in v19_key[key]:
+            if 'corr' in mod:
+                SubClassDict_SNANA['ii'][mod]=key
+    elif key.startswith('Ic') or key.startswith('Ib'):
+        for mod in v19_key[key]:
+            if 'corr' in mod:
+                SubClassDict_SNANA['ibc'][mod]=key
 
 
 SubClassDict_PSNID = {
@@ -229,7 +250,8 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     :return:
     """
     import os
-
+    import pdb
+    #pdb.set_trace()
     from scipy import interpolate, integrate
     from sncosmo import fitting, Model, CCM89Dust
     import time
@@ -280,21 +302,24 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
             vparam_names = ['z','t0','x0','x1','c']
             guess_amp = True
         else :
-            guess_amp = False
             vparam_names = ['t0','x0','x1','c']
-            model.set(z=np.mean(zminmax))
-            model.set_source_peakabsmag(-19.36,'bessellb','ab')
-            peak_x0 = model.get('x0')
-            model.set_source_peakabsmag(-19.36+.47*5,'bessellb','ab')
-            min_x0 = model.get('x0')
-            model.set_source_peakabsmag(-19.36-.47*5,'bessellb','ab')
-            max_x0 = model.get('x0')
-            model.set_source_peakabsmag(-19.36+.47,'bessellb','ab')
-            sig_x0 = np.abs(model.get('x0')-peak_x0)
-            def x0prior(x0):
-                return(gauss(x0,peak_x0,np.array([-1,1])*sig_x0,
-                    range=[min_x0,max_x0]))
-            bounds['x0'] = [min_x0,max_x0]
+            guess_amp = True
+            if False:
+                guess_amp = False
+                
+                model.set(z=np.mean(zminmax))
+                model.set_source_peakabsmag(-19.36,'bessellb','ab')
+                peak_x0 = model.get('x0')
+                model.set_source_peakabsmag(-19.36+.47*3,'bessellb','ab')
+                min_x0 = model.get('x0')
+                model.set_source_peakabsmag(-19.36-.47*3,'bessellb','ab')
+                max_x0 = model.get('x0')
+                model.set_source_peakabsmag(-19.36+.47,'bessellb','ab')
+                sig_x0 = np.abs(model.get('x0')-peak_x0)
+                def x0prior(x0):
+                    return(gauss(x0,peak_x0,np.array([-1,1])*sig_x0,
+                        range=[min_x0,max_x0]))
+                bounds['x0'] = [min_x0,max_x0]
         bounds['x1'] = (-5.,5.)
         # bounds['c'] = (-0.5,3.0)
         bounds['c'] = (-0.5,5.0)  # fat red tail
@@ -306,7 +331,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         if zhost :
             priorfn = {'z':zprior, 'x1':x1prior, 'c':cprior}
         else :
-            priorfn = { 'x1':x1prior, 'c':cprior,'x0':x0prior }
+            priorfn = { 'x1':x1prior, 'c':cprior}#,'x0':x0prior }
     else :
         # define a host-galaxy dust model
         dust = CCM89Dust( )
@@ -318,28 +343,31 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
             vparam_names = ['z','t0','amplitude','hostebv','hostr_v']
             guess_amp = True
         else :
-            guess_amp = False
             vparam_names = ['t0','amplitude','hostebv','hostr_v']
-            sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
-            model.set(z=np.mean(zminmax))
-            mag_dict = {'Ib':(-17.9,.9),'Ic':(-18.3,.6),
-                        'IIb':(-17.03,.93),'IIL':(-17.98,0.9),'IIP':(-16.8,.97),'IIn':(-18.62,1.48)}
-            mag,err = mag_dict[SubClassDict_SNANA[sn_typ][model._source.name]]
-            model.set_source_peakabsmag(mag,'bessellr','ab')
-            peak_amp = model.get('amplitude')
-            model.set_source_peakabsmag(mag+err*5,'bessellr','ab')
-            min_amp = model.get('amplitude')
-            model.set_source_peakabsmag(mag-err*5,'bessellr','ab')
-            max_amp = model.get('amplitude')
-            model.set_source_peakabsmag(mag+err,'bessellr','ab')
-            sig_amp = np.abs(model.get('amplitude')-peak_amp)
-
-            def ampprior(amp):
-                return(gauss(amp,peak_amp,np.array([-1,1])*sig_amp,
-                    range=[min_amp,max_amp]))
-            bounds['amplitude'] = [min_amp,max_amp]
+            guess_amp = True
+            if False:
+                guess_amp = False
+                
+                sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
+                model.set(z=np.mean(zminmax))
+                mag_dict = {'Ib':(-17.9,.9),'Ic':(-18.3,.6),
+                            'IIb':(-17.03,.93),'IIL':(-17.98,0.9),'IIP':(-16.8,.97),'IIn':(-18.62,1.48)}
+                mag,err = mag_dict[SubClassDict_SNANA[sn_typ][model._source.name]]
+                model.set_source_peakabsmag(mag,'bessellr','ab')
+                peak_amp = model.get('amplitude')
+                model.set_source_peakabsmag(mag+err*3,'bessellr','ab')
+                min_amp = model.get('amplitude')
+                model.set_source_peakabsmag(mag-err*3,'bessellr','ab')
+                max_amp = model.get('amplitude')
+                model.set_source_peakabsmag(mag+err,'bessellr','ab')
+                sig_amp = np.abs(model.get('amplitude')-peak_amp)
+                #print(amp,peak_amp,np.array([-1,1])*sig_amp,min_amp,max_amp)
+                def ampprior(amp):
+                    return(gauss(amp,peak_amp,np.array([-1,1])*sig_amp,
+                        range=[min_amp,max_amp]))
+                bounds['amplitude'] = [min_amp,max_amp]
         # bounds['hostebv'] = (0.0,1.0)
-        bounds['hostebv'] = (0.0,3.0) # fat red tail
+        bounds['hostebv'] = (0,3.0) # fat red tail
         bounds['hostr_v'] = (2.0,4.0)
         def rvprior( rv ) :
             return( gauss( rv, 3.1, 0.3, range=bounds['host_rv'] ) )
@@ -347,7 +375,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         if zhost and zhosterr>0.01:
             priorfn = {'z':zprior, 'rv':rvprior }
         else :
-            priorfn = { 'rv':rvprior ,'amplitude':ampprior}
+            priorfn = { 'rv':rvprior}# ,'amplitude':ampprior}
 
 
     model.set(z=np.mean(zminmax))
@@ -358,6 +386,9 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print(model.parameters)
     #print(bounds)
     #print(vparam_names)
+    #print(sn)
+    #print(bounds)
+    #print(model.parameters)
     #print(sn)
 
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
@@ -372,6 +403,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print ("fit2: ", time.time())
     tend = time.time()
     if verbose : print("  Total Fitting time = %.1f sec"%(tend-tstart))
+    priorfn = None
     return( sn, res, fit, priorfn )
 
 def get_marginal_pdfs( res, nbins=51, verbose=True ):
@@ -579,6 +611,10 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     :param verbose:
     :return:
     """    
+    if verbose:
+        print('Removing NaNs')
+    sn = sn[np.isfinite(sn['flux'])]
+
     tstart = time.time()
     if templateset.lower() == 'psnid':
         SubClassDict = SubClassDict_PSNID
@@ -667,15 +703,22 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     '''
 #-------------------------------------------------------------------------------
     #parallelized code
-    
+    import multiprocessing
+    from multiprocessing import Pool
+
+    with Pool(processes=multiprocessing.cpu_count()) as pool:
+      res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates] for x in allmodelnames])
+    #p = Process(target=, args=())
+    #p.start()
+    #p.join()
     #res=parallelize.foreach(allmodelnames,_parallel,[verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates])
-    res = []
-    for m in allmodelnames:
-        try:
-            print('trying')
-            res.append(_parallel(np.append([m],[verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates])))
-        except:
-            res.append(None)
+    # res = []
+    # for m in allmodelnames:
+    #    try:
+    #        print('trying')
+    #        res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates]))
+    #    except RuntimeError:
+    #        res.append(None)
             
     dt = time.time() - tstart
     if verbose:
