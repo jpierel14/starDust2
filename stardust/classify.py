@@ -553,7 +553,6 @@ def _parallel(args):
     modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates=args
     print(modelsource)
     try:
-    
         sn, res, fit, priorfn = get_evidence(
             sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
             t0_range=t0_range, zminmax=zminmax,
@@ -563,8 +562,10 @@ def _parallel(args):
                                     verbose=max(0, verbose - 1))
         else:
             pdf = None
+
         #del fit._source
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
+    
     except:
        print("Some serious problem with %s, skipping..."%modelsource)
        outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
@@ -751,18 +752,23 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
             logprior = logpriordict['ia']
             logz['Ia'].append(logprior + res[modelsource]['res']['logz'])
             modelProbs['ia'][modelsource] = res[modelsource]['res']['logz']
-        
+
     if(verbose):
         import pprint
         print(pprint.pprint(modelProbs))
 
     # sum up the evidence from all models for each sn type
-    logztype = {}
-    for modelsource in ['II', 'Ibc', 'Ia']:
-        logztype[modelsource] = logz[modelsource][0]
-        for i in range(1, len(logz[modelsource])):
-            logztype[modelsource] = np.logaddexp(
-                logztype[modelsource], logz[modelsource][i])
+    try:
+        logztype = {}
+        for modelsource in ['II', 'Ibc', 'Ia']:
+            logztype[modelsource] = logz[modelsource][0]
+            for i in range(1, len(logz[modelsource])):
+                logztype[modelsource] = np.logaddexp(
+                    logztype[modelsource], logz[modelsource][i])
+    except:
+        import pdb
+        pdb.set_trace()
+
     
 #-------------------------------------------------------------------------------
     # define the total evidence (final denominator in Bayes theorem) and then
