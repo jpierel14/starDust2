@@ -51,23 +51,24 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                           'ia': {'salt3-nir':'Ia'},
                       }
 
+do_v19=False
+if do_v19:
+    temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
+    v19_key = {}
+    for row in temp:
+        if row['type'] not in v19_key.keys():
+            v19_key[row['type']] = []
+        v19_key[row['type']].append(row['model'])
 
-temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
-v19_key = {}
-for row in temp:
-    if row['type'] not in v19_key.keys():
-        v19_key[row['type']] = []
-    v19_key[row['type']].append(row['model'])
-
-for key in v19_key.keys():
-    if key.startswith('II'):
-        for mod in v19_key[key]:
-            if 'corr' in mod:
-                SubClassDict_SNANA['ii'][mod]=key
-    elif key.startswith('Ic') or key.startswith('Ib'):
-        for mod in v19_key[key]:
-            if 'corr' in mod:
-                SubClassDict_SNANA['ibc'][mod]=key
+    for key in v19_key.keys():
+        if key.startswith('II'):
+            for mod in v19_key[key]:
+                if 'corr' in mod:
+                    SubClassDict_SNANA['ii'][mod]=key
+        elif key.startswith('Ic') or key.startswith('Ib'):
+            for mod in v19_key[key]:
+                if 'corr' in mod:
+                    SubClassDict_SNANA['ibc'][mod]=key
 
 
 SubClassDict_PSNID = {
@@ -390,7 +391,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print(bounds)
     #print(model.parameters)
     #print(sn)
-
+    #pdb.set_trace()
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
                                priors=priorfn, minsnr=2,
@@ -565,7 +566,11 @@ def _parallel(args):
 
         #del fit._source
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
+<<<<<<< HEAD
     
+=======
+        #print(outdict)
+>>>>>>> 210b9180 (updates)
     except:
        print("Some serious problem with %s, skipping..."%modelsource)
        outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
@@ -599,7 +604,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              zminmax=[1.488,1.493], npoints=100, maxiter=10000,
              templateset='SNANA', excludetemplates=[],
              nsteps_pdf=101, priors={'Ia':0.24, 'II':0.57, 'Ibc':0.19},
-             inflate_uncertainties=False,
+             inflate_uncertainties=False,use_multi=True,
              verbose=True):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
@@ -704,22 +709,21 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     '''
 #-------------------------------------------------------------------------------
     #parallelized code
-    import multiprocessing
-    from multiprocessing import Pool
+    if use_multi:
+        import multiprocessing
+        from multiprocessing import Pool
 
-    with Pool(processes=multiprocessing.cpu_count()) as pool:
-      res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates] for x in allmodelnames])
-    #p = Process(target=, args=())
-    #p.start()
-    #p.join()
-    #res=parallelize.foreach(allmodelnames,_parallel,[verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates])
-    # res = []
-    # for m in allmodelnames:
-    #    try:
-    #        print('trying')
-    #        res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates]))
-    #    except RuntimeError:
-    #        res.append(None)
+        with Pool(processes=multiprocessing.cpu_count()) as pool:
+          res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates] for x in allmodelnames])
+
+    else:
+        res = []
+        for m in allmodelnames:
+           try:
+               print('trying')
+               res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates]))
+           except RuntimeError:
+               res.append(None)
             
     dt = time.time() - tstart
     if verbose:
