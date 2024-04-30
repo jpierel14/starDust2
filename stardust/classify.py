@@ -51,7 +51,7 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                           'ia': {'salt3-nir':'Ia'},
                       }
 
-do_v19=False
+do_v19=True
 if do_v19:
     temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
     v19_key = {}
