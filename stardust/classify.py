@@ -51,7 +51,7 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                           'ia': {'salt3-nir':'Ia'},
                       }
 
-do_v19=True
+do_v19=False
 if do_v19:
     temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
     v19_key = {}
@@ -245,7 +245,7 @@ def gauss( x, mu, sigma, range=None):
 def get_evidence(sn=testsnIa, modelsource='salt2',
                  zhost=None, zhosterr=None, t0_range=None,
                  zminmax=[0.1,2.8],
-                 npoints=100, maxiter=1000, verbose=True):
+                 npoints=100, maxiter=1000, verbose=True,sampling_dict={}):
     """  compute the Bayesian evidence (and likelihood distributions)
     for the given SN class using the sncosmo nested sampling algorithm.
     :return:
@@ -396,7 +396,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                                guess_amplitude_bound=guess_amp,
                                priors=priorfn, minsnr=2,
                                npoints=npoints, maxiter=maxiter,
-                               verbose=verbose)
+                               verbose=verbose,**sampling_dict)
     #import matplotlib.pyplot as plt
     #sncosmo.plot_lc(sn,fit)
     #plt.show()
@@ -551,14 +551,14 @@ def plot_marginal_pdfs( res, nbins=101, **kwargs):
 
 
 def _parallel(args):
-    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates=args
+    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict=args
     print(modelsource)
     try:
     
         sn, res, fit, priorfn = get_evidence(
             sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
             t0_range=t0_range, zminmax=zminmax,
-            npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1))
+            npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict)
         if nsteps_pdf:
             pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
                                     verbose=max(0, verbose - 1))
@@ -567,8 +567,10 @@ def _parallel(args):
         #del fit._source
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
         #print(outdict)
-    except:
+    except Exception as e:
+       print(e)
        print("Some serious problem with %s, skipping..."%modelsource)
+
        outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
     #({'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn})
     return outdict
@@ -601,7 +603,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              templateset='SNANA', excludetemplates=[],
              nsteps_pdf=101, priors={'Ia':0.24, 'II':0.57, 'Ibc':0.19},
              inflate_uncertainties=False,use_multi=True,
-             verbose=True):
+             verbose=True,sampling_dict={}):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -710,14 +712,14 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         from multiprocessing import Pool
 
         with Pool(processes=multiprocessing.cpu_count()) as pool:
-          res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates] for x in allmodelnames])
+          res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict] for x in allmodelnames])
 
     else:
         res = []
         for m in allmodelnames:
            try:
                print('trying')
-               res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates]))
+               res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict]))
            except RuntimeError:
                res.append(None)
             
