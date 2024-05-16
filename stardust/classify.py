@@ -51,7 +51,7 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                           'ia': {'salt3-nir':'Ia'},
                       }
 
-do_v19=False
+do_v19=True
 if do_v19:
     temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
     v19_key = {}
@@ -378,8 +378,10 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         else :
             priorfn = { 'rv':rvprior}# ,'amplitude':ampprior}
 
-
-    model.set(z=np.mean(zminmax))
+    if zhosterr <.01:
+        model.set(z=zhost)
+    else:
+        model.set(z=np.mean(zminmax))
     #if np.any([sncosmo.get_bandpass(x).wave[0]/(1+model.get('z'))<model._source.minwave() for x in sn['band']]):
     if False and (np.min(model._source._wave)>2500 or np.max(model._source._wave)<19000):#np.any([sncosmo.get_bandpass(x).wave[-1]/(1+model.get('z'))>model._source.maxwave() for x in sn['band']]):
         print('skip')
