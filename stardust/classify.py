@@ -26,7 +26,7 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                                     'snana-2007lz':'IIP',  # sdss018713
                                     'snana-2007lx':'IIP',  # sdss018734
                                     'snana-2007og':'IIP',  # sdss018793
-                                    'snana-2007ny':'IIP',  # sdss018834
+                                    #'snana-2007ny':'IIP',  # sdss018834
                                     'snana-2007nv':'IIP',  # sdss018892
                                     'snana-2007pg':'IIP',  # sdss020038
                                     'snana-2006ez':'IIn',  # sdss012842
@@ -51,7 +51,7 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                           'ia': {'salt3-nir':'Ia'},
                       }
 
-do_v19=True
+do_v19=False
 if do_v19:
     temp = Table.read(os.path.join(os.path.dirname(__file__),'v19_key.txt'),format='ascii')
     v19_key = {}
@@ -301,11 +301,25 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         model = Model( source=modelsource)
         if zhosterr>0.01 :
             vparam_names = ['z','t0','x0','x1','c']
-            guess_amp = True
+            guess_amp = False
+            model.set(z=np.mean(zminmax))
+            model.set_source_peakabsmag(-19.36,'bessellb','ab')
+            peak_x0 = model.get('x0')
+
+            model.set(z=np.min(zminmax))
+            model.set_source_peakabsmag(-19.36-.47*3,'bessellb','ab')
+            max_x0 = model.get('x0')
+
+            model.set(z=np.max(zminmax))
+            model.set_source_peakabsmag(-19.36+.47*3,'bessellb','ab')
+            min_x0 = model.get('x0')
+            
+            bounds['x0'] = [min_x0,max_x0]
+            model.set(x0=peak_x0)
         else :
             vparam_names = ['t0','x0','x1','c']
             guess_amp = True
-            if False:
+            if True:
                 guess_amp = False
                 
                 model.set(z=np.mean(zminmax))
@@ -321,14 +335,17 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                     return(gauss(x0,peak_x0,np.array([-1,1])*sig_x0,
                         range=[min_x0,max_x0]))
                 bounds['x0'] = [min_x0,max_x0]
-        bounds['x1'] = (-5.,5.)
+                if np.isnan(peak_x0):
+                    print('SALT?',zminmax)
+                model.set(x0=peak_x0)
+        bounds['x1'] = (-3.,3.)
         # bounds['c'] = (-0.5,3.0)
-        bounds['c'] = (-0.5,5.0)  # fat red tail
+        bounds['c'] = (-1,2.0)  # fat red tail
         def x1prior( x1 ) :
-            return( gauss( x1, 0, [-1.5,0.9], range=bounds['x1'] ) )
+            return( gauss( x1, 0, [-1,1], range=bounds['x1'] ) )
         def cprior( c ) :
             # return( gauss( c, 0, [-0.08,0.14], range=bounds['c'] ) )
-            return( gauss( c, 0, [-0.08,0.54], range=bounds['c'] ) ) # fat red tail
+            return( gauss( c, 0, [-.1,0.3], range=bounds['c'] ) ) # fat red tail
         if zhost :
             priorfn = {'z':zprior, 'x1':x1prior, 'c':cprior}
         else :
@@ -342,11 +359,32 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
 
         if zhosterr>0.01 :
             vparam_names = ['z','t0','amplitude','hostebv','hostr_v']
-            guess_amp = True
+            guess_amp = False
+            sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
+            model.set(z=np.mean(zminmax))
+            mag_dict = {'Ib':(-17.9,.9),'Ic':(-18.3,.6),
+                        'IIb':(-17.03,.93),'IIL':(-17.98,0.9),'IIP':(-16.8,.97),'IIn':(-18.62,1.48)}
+            mag,err = mag_dict[SubClassDict_SNANA[sn_typ][model._source.name]]
+            model.set_source_peakabsmag(mag,'bessellr','ab')
+            peak_amp = model.get('amplitude')
+            
+            model.set(z=np.max(zminmax))
+            model.set_source_peakabsmag(mag+err*3,'bessellr','ab')
+            min_amp = model.get('amplitude')
+
+            model.set(z=np.min(zminmax))
+            model.set_source_peakabsmag(mag-err*3,'bessellr','ab')
+            max_amp = model.get('amplitude')
+            
+            
+            bounds['amplitude'] = [min_amp,max_amp]
+            
+            model.set(amplitude=peak_amp)
+
         else :
             vparam_names = ['t0','amplitude','hostebv','hostr_v']
             guess_amp = True
-            if False:
+            if True:
                 guess_amp = False
                 
                 sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
@@ -367,6 +405,9 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                     return(gauss(amp,peak_amp,np.array([-1,1])*sig_amp,
                         range=[min_amp,max_amp]))
                 bounds['amplitude'] = [min_amp,max_amp]
+                if np.isnan(peak_amp):
+                    print(modelsource,zminmax)
+                model.set(amplitude=peak_amp)
         # bounds['hostebv'] = (0.0,1.0)
         bounds['hostebv'] = (0,3.0) # fat red tail
         bounds['hostr_v'] = (2.0,4.0)
@@ -382,15 +423,22 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         model.set(z=zhost)
     else:
         model.set(z=np.mean(zminmax))
+    #print(model.parameters)
     #if np.any([sncosmo.get_bandpass(x).wave[0]/(1+model.get('z'))<model._source.minwave() for x in sn['band']]):
     if False and (np.min(model._source._wave)>2500 or np.max(model._source._wave)<19000):#np.any([sncosmo.get_bandpass(x).wave[-1]/(1+model.get('z'))>model._source.maxwave() for x in sn['band']]):
         print('skip')
         return None
     #print(model.parameters)
-    #print(bounds)
+    #print(bounds,guess_amp)
+
+    #if 'amplitude' in vparam_names and 'amplitude' not in bounds.keys():
+    #    bounds['amplitude'] = (1e-25,1e-10)
+    #elif 'x0' in vparam_names and 'x0' not in bounds.keys():
+    #    bounds['x0'] = (1e-10,.01)
+    #guess_amp = False
     #print(vparam_names)
     #print(sn)
-    #print(bounds)
+    print(bounds)
     #print(model.parameters)
     #print(sn)
     #pdb.set_trace()
@@ -569,11 +617,11 @@ def _parallel(args):
         #del fit._source
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
         #print(outdict)
-    except Exception as e:
-       print(e)
-       print("Some serious problem with %s, skipping..."%modelsource)
+    except:
+       #print(e)
+        print("Some serious problem with %s, skipping..."%modelsource)
 
-       outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
+        outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
     #({'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn})
     return outdict
     #return(parallelize.parReturn(outdict))
