@@ -1,5 +1,5 @@
 import pyParz as parallelize
-import sys,sncosmo,os
+import sys,sncosmo,os,copy
 from astropy.table import Table
 import warnings
 warnings.simplefilter('ignore')
@@ -245,7 +245,8 @@ def gauss( x, mu, sigma, range=None):
 def get_evidence(sn=testsnIa, modelsource='salt2',
                  zhost=None, zhosterr=None, t0_range=None,
                  zminmax=[0.1,2.8],
-                 npoints=100, maxiter=1000, verbose=True,sampling_dict={}):
+                 npoints=100, maxiter=1000, verbose=True,sampling_dict={},
+                 do_coarse_run=False):
     """  compute the Bayesian evidence (and likelihood distributions)
     for the given SN class using the sncosmo nested sampling algorithm.
     :return:
@@ -338,9 +339,9 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                 if np.isnan(peak_x0):
                     print('SALT?',zminmax)
                 model.set(x0=peak_x0)
-        bounds['x1'] = (-3.,3.)
+        bounds['x1'] = (-2.,2.)
         # bounds['c'] = (-0.5,3.0)
-        bounds['c'] = (-1,2.0)  # fat red tail
+        bounds['c'] = (-1,1.0)  # fat red tail
         def x1prior( x1 ) :
             return( gauss( x1, 0, [-1,1], range=bounds['x1'] ) )
         def cprior( c ) :
@@ -358,7 +359,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                                effect_names=['host'], effect_frames=['rest'])
 
         if zhosterr>0.01 :
-            vparam_names = ['z','t0','amplitude','hostebv','hostr_v']
+            vparam_names = ['z','t0','amplitude','hostebv']
             guess_amp = False
             sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
             model.set(z=np.mean(zminmax))
@@ -382,7 +383,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
             model.set(amplitude=peak_amp)
 
         else :
-            vparam_names = ['t0','amplitude','hostebv','hostr_v']
+            vparam_names = ['t0','amplitude','hostebv']
             guess_amp = True
             if True:
                 guess_amp = False
@@ -409,7 +410,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                     print(modelsource,zminmax)
                 model.set(amplitude=peak_amp)
         # bounds['hostebv'] = (0.0,1.0)
-        bounds['hostebv'] = (0,3.0) # fat red tail
+        bounds['hostebv'] = (0,1.0) # fat red tail
         bounds['hostr_v'] = (2.0,4.0)
         def rvprior( rv ) :
             return( gauss( rv, 3.1, 0.3, range=bounds['host_rv'] ) )
@@ -442,9 +443,22 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print(model.parameters)
     #print(sn)
     #pdb.set_trace()
+    if do_coarse_run:
+        res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
+                                       #guess_amplitude_bound=guess_amp,
+                                       #priors=priorfn, 
+                                       minsnr=2,
+                                       #npoints=npoints, maxiter=maxiter,
+                                       verbose=verbose)#,**sampling_dict)
+        guess_amp = False
+        bounds = {p:(fit_coarse.get(p)-res_coarse.errors[p]*3,
+                    fit_coarse.get(p)+res_coarse.errors[p]*3) for p in vparam_names}
+
+
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
-                               priors=priorfn, minsnr=2,
+                               #priors=priorfn, 
+                               minsnr=2,
                                npoints=npoints, maxiter=maxiter,
                                verbose=verbose,**sampling_dict)
     #import matplotlib.pyplot as plt
@@ -601,14 +615,15 @@ def plot_marginal_pdfs( res, nbins=101, **kwargs):
 
 
 def _parallel(args):
-    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict=args
+    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run=args
     print(modelsource)
     try:
     
         sn, res, fit, priorfn = get_evidence(
             sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
             t0_range=t0_range, zminmax=zminmax,
-            npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict)
+            npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict,
+            do_coarse_run=do_coarse_run)
         if nsteps_pdf:
             pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
                                     verbose=max(0, verbose - 1))
@@ -617,7 +632,7 @@ def _parallel(args):
         #del fit._source
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
         #print(outdict)
-    except:
+    except RuntimeError:
        #print(e)
         print("Some serious problem with %s, skipping..."%modelsource)
 
@@ -653,7 +668,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              templateset='SNANA', excludetemplates=[],
              nsteps_pdf=101, priors={'Ia':0.24, 'II':0.57, 'Ibc':0.19},
              inflate_uncertainties=False,use_multi=True,
-             verbose=True,sampling_dict={}):
+             verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -673,7 +688,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     if templateset.lower() == 'psnid':
         SubClassDict = SubClassDict_PSNID
     elif templateset.lower() == 'snana':
-        SubClassDict = SubClassDict_SNANA
+        SubClassDict = copy.deepcopy(SubClassDict_SNANA)
     
     iimodelnames = list(SubClassDict['ii'].keys())
     ibcmodelnames = list(SubClassDict['ibc'].keys())
@@ -758,11 +773,96 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
 #-------------------------------------------------------------------------------
     #parallelized code
     if use_multi:
+        import signal
         import multiprocessing
         from multiprocessing import Pool
+        def worker(args,results):
+            result = _parallel(args)
+            results.append(result)
+        def run_with_timeout(args,results, timeout=fitting_timeout):
+            """Runs a function with a timeout."""
+            process = multiprocessing.Process(target=worker, args=(args,results))
+            process.start()
+            process.join(timeout)
+            
+            if process.is_alive():
+                print(f"Task {args[0]} exceeded {timeout} seconds and will be terminated.")
 
-        with Pool(processes=multiprocessing.cpu_count()) as pool:
-          res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict] for x in allmodelnames])
+                process.terminate()
+                #queue.put(None)
+                process.join()
+                results.append({'key':args[0],'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None})
+            else:
+                print(f"Task {args[0]} finished within the time limit.")
+        
+
+        args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run] for x in allmodelnames]
+        manager = multiprocessing.Manager()
+        res = manager.list()
+        processes = []
+        #res = []
+        for args in args_list:
+            p = multiprocessing.Process(target=run_with_timeout,args=[args,res])
+            processes.append(p)
+            p.start()
+        
+        for p in processes:
+            p.join()
+        #queue.cancel_join_thread()
+        #print(queue.qsize())
+        #import threading
+
+        #import signal
+        #def handler(signum, frame):
+        #    """Raise an exception when time is up."""
+        #    raise TimeoutError("Task took too long!")
+        #signal.signal(signal.SIGALRM, handler)
+        # def timeout_func():
+        #     print("Task took too long! Stopping execution.")
+        #     sys.exit(1)
+        
+        # while True:
+        #     print('xxx1')
+        #     timer = threading.Timer(2,timeout_func)
+        #     #signal.alarm(2)  # Schedule alarm
+        #     timer.start()
+        #     try:
+        #         result = queue.get_nowait()
+        #         timer.cancel()
+        #         print('xxx2')
+        #         res.append(result)
+        #     except:
+        #         break
+        # queue.close()
+        # queue.join_thread()
+        #import pdb
+        #pdb.set_trace()
+        # with Pool(processes=multiprocessing.cpu_count()) as pool:
+            
+        #     async_results = []
+        #     for args in args_list:
+        #         async_result = pool.apply_async(worker_with_timeout,[args])
+        #         async_results.append(async_result)
+        #         #import pdb
+        #         #pdb.set_trace()
+        #     for async_result in async_results:
+        #         try:
+        #             result = async_result.get(timeout=60)
+        #             res.append(result)
+        #         except multiprocessing.TimeoutError:
+        #             print(f"Task exceeded the timeout!")
+        #             #async_result._pool.terminate()
+        #             #async_result._pool.join()
+        #             res.append(None)
+        #     #try:
+        #     #    res = pool.map(_parallel, )
+        #     #    res.get(timeout=60)
+        #     #except multiprocessing.TimeoutError:
+        #     #    print("Fit took too long...")
+        #     #    pool.
+        # pool.close()
+        # pool.join()
+
 
     else:
         res = []
@@ -809,10 +909,15 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         import pprint
         print(pprint.pprint(modelProbs))
 
+
     # sum up the evidence from all models for each sn type
     logztype = {}
     for modelsource in ['II', 'Ibc', 'Ia']:
-        logztype[modelsource] = logz[modelsource][0]
+        try:
+            logztype[modelsource] = logz[modelsource][0]
+        except:
+            logztype[modelsource] = -np.inf
+            continue
         for i in range(1, len(logz[modelsource])):
             logztype[modelsource] = np.logaddexp(
                 logztype[modelsource], logz[modelsource][i])
@@ -884,7 +989,7 @@ def get_bestfit_modelnames(classdict, templateset='SNANA',
     if templateset.lower()=='psnid':
         subclassdict = SubClassDict_PSNID
     else:
-        subclassdict = SubClassDict_SNANA
+        subclassdict = copy.deepcopy(SubClassDict_SNANA)
 
     IImodlist = [modname for modname in classdict.keys() if modname in
                  subclassdict['ii'].keys()]
