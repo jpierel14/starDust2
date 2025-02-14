@@ -773,41 +773,45 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
 #-------------------------------------------------------------------------------
     #parallelized code
     if use_multi:
-        import signal
+        
         import multiprocessing
         from multiprocessing import Pool
-        def worker(args,results):
-            result = _parallel(args)
-            results.append(result)
-        def run_with_timeout(args,results, timeout=fitting_timeout):
-            """Runs a function with a timeout."""
-            process = multiprocessing.Process(target=worker, args=(args,results))
-            process.start()
-            process.join(timeout)
+        if fitting_timeout is not None:
+            def worker(args,results):
+                result = _parallel(args)
+                results.append(result)
+            def run_with_timeout(args,results, timeout=fitting_timeout):
+                """Runs a function with a timeout."""
+                process = multiprocessing.Process(target=worker, args=(args,results))
+                process.start()
+                process.join(timeout)
+                
+                if process.is_alive():
+                    print(f"Task {args[0]} exceeded {timeout} seconds and will be terminated.")
+
+                    process.terminate()
+                    #queue.put(None)
+                    process.join()
+                    results.append({'key':args[0],'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None})
+                else:
+                    print(f"Task {args[0]} finished within the time limit.")
             
-            if process.is_alive():
-                print(f"Task {args[0]} exceeded {timeout} seconds and will be terminated.")
 
-                process.terminate()
-                #queue.put(None)
-                process.join()
-                results.append({'key':args[0],'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None})
-            else:
-                print(f"Task {args[0]} finished within the time limit.")
-        
-
-        args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run] for x in allmodelnames]
-        manager = multiprocessing.Manager()
-        res = manager.list()
-        processes = []
-        #res = []
-        for args in args_list:
-            p = multiprocessing.Process(target=run_with_timeout,args=[args,res])
-            processes.append(p)
-            p.start()
-        
-        for p in processes:
-            p.join()
+            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run] for x in allmodelnames]
+            manager = multiprocessing.Manager()
+            res = manager.list()
+            processes = []
+            #res = []
+            for args in args_list:
+                p = multiprocessing.Process(target=run_with_timeout,args=[args,res])
+                processes.append(p)
+                p.start()
+            
+            for p in processes:
+                p.join()
+        else:
+            with Pool(processes=multiprocessing.cpu_count()) as pool:
+                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict] for x in allmodelnames])
         #queue.cancel_join_thread()
         #print(queue.qsize())
         #import threading
