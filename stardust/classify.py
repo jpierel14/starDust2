@@ -879,8 +879,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict]))
            except RuntimeError:
                res.append(None)
-    import pdb
-    pdb.set_trace()
+    
     dt = time.time() - tstart
     if verbose:
         print('------------------------------')
