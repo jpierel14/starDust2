@@ -811,7 +811,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                 p.join()
         else:
             with Pool(processes=multiprocessing.cpu_count()) as pool:
-                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict] for x in allmodelnames])
+                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run] for x in allmodelnames])
         #queue.cancel_join_thread()
         #print(queue.qsize())
         #import threading
