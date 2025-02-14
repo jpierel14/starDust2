@@ -630,6 +630,9 @@ def _parallel(args):
         else:
             pdf = None
         #del fit._source
+        if 'salt' in modelsource:
+            fit = None
+        
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
         #print(outdict)
     except RuntimeError:
