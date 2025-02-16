@@ -439,7 +439,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #guess_amp = False
     #print(vparam_names)
     #print(sn)
-    print(bounds)
+    
     #print(model.parameters)
     #print(sn)
     #pdb.set_trace()
@@ -451,10 +451,31 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                                        #npoints=npoints, maxiter=maxiter,
                                        verbose=verbose)#,**sampling_dict)
         guess_amp = False
-        bounds = {p:(fit_coarse.get(p)-res_coarse.errors[p]*3,
-                    fit_coarse.get(p)+res_coarse.errors[p]*3) for p in vparam_names}
+        for p in vparam_names:
+            minb = fit_coarse.get(p)-res_coarse.errors[p]*3
+            maxb = fit_coarse.get(p)+res_coarse.errors[p]*3
+            if p in bounds.keys():
+                
+                if minb<bounds[p][0]:
+                    minb = bounds[p][0]
+                
+                if maxb>bounds[p][1]:
+                    maxb = bounds[p][1]
+            bounds[p] = [minb,maxb]
+        #bounds = {p:[fit_coarse.get(p)-res_coarse.errors[p]*3,
+        #            fit_coarse.get(p)+res_coarse.errors[p]*3] for p in vparam_names}
+        for b in bounds.keys():
+            if b not in ['c','x1']:
+                if bounds[b][0]<0:
+                    bounds[b][0] = 0
+                if b=='z':
+                    if bounds[b][0]<zminmax[0]:
+                        bounds[b][0] = zminmax[0]
+                    if bounds[b][1] >zminmax[1]:
+                        bounds[b][1] = zminmax[1]
 
-
+    
+    print(model._source.name,bounds)
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
                                #priors=priorfn, 
@@ -636,7 +657,7 @@ def _parallel(args):
         outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
         #print(outdict)
     except RuntimeError:
-       #print(e)
+    #   #print(e)
         print("Some serious problem with %s, skipping..."%modelsource)
 
         outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
