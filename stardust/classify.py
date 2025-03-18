@@ -246,7 +246,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                  zhost=None, zhosterr=None, t0_range=None,
                  zminmax=[0.1,2.8],
                  npoints=100, maxiter=1000, verbose=True,sampling_dict={},
-                 do_coarse_run=False):
+                 do_coarse_run=False,use_luminosity=True,priorfn=None):
     """  compute the Bayesian evidence (and likelihood distributions)
     for the given SN class using the sncosmo nested sampling algorithm.
     :return:
@@ -302,25 +302,26 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         model = Model( source=modelsource)
         if zhosterr>0.01 :
             vparam_names = ['z','t0','x0','x1','c']
-            guess_amp = False
-            model.set(z=np.mean(zminmax))
-            model.set_source_peakabsmag(-19.36,'bessellb','ab')
-            peak_x0 = model.get('x0')
+            if use_luminosity:
+                guess_amp = False
+                model.set(z=np.mean(zminmax))
+                model.set_source_peakabsmag(-19.36,'bessellb','ab')
+                peak_x0 = model.get('x0')
 
-            model.set(z=np.min(zminmax))
-            model.set_source_peakabsmag(-19.36-.47*3,'bessellb','ab')
-            max_x0 = model.get('x0')
+                model.set(z=np.min(zminmax))
+                model.set_source_peakabsmag(-19.36-.47*3,'bessellb','ab')
+                max_x0 = model.get('x0')
 
-            model.set(z=np.max(zminmax))
-            model.set_source_peakabsmag(-19.36+.47*3,'bessellb','ab')
-            min_x0 = model.get('x0')
+                model.set(z=np.max(zminmax))
+                model.set_source_peakabsmag(-19.36+.47*3,'bessellb','ab')
+                min_x0 = model.get('x0')
             
-            bounds['x0'] = [min_x0,max_x0]
-            model.set(x0=peak_x0)
+                bounds['x0'] = [min_x0,max_x0]
+                model.set(x0=peak_x0)
         else :
             vparam_names = ['t0','x0','x1','c']
             guess_amp = True
-            if True:
+            if use_luminosity:
                 guess_amp = False
                 
                 model.set(z=np.mean(zminmax))
@@ -347,10 +348,13 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         def cprior( c ) :
             # return( gauss( c, 0, [-0.08,0.14], range=bounds['c'] ) )
             return( gauss( c, 0, [-.1,0.3], range=bounds['c'] ) ) # fat red tail
-        if zhost :
-            priorfn = {'z':zprior, 'x1':x1prior, 'c':cprior}
-        else :
-            priorfn = { 'x1':x1prior, 'c':cprior}#,'x0':x0prior }
+        #if use_priors:
+        #    if zhost :
+        #        priorfn = {'z':zprior, 'x1':x1prior, 'c':cprior}
+        #    else :
+        #        priorfn = { 'x1':x1prior, 'c':cprior}#,'x0':x0prior }
+        #else:
+        #    priorfn = {}
     else :
         # define a host-galaxy dust model
         dust = CCM89Dust( )
@@ -360,32 +364,33 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
 
         if zhosterr>0.01 :
             vparam_names = ['z','t0','amplitude','hostebv']
-            guess_amp = False
-            sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
-            model.set(z=np.mean(zminmax))
-            mag_dict = {'Ib':(-17.9,.9),'Ic':(-18.3,.6),
-                        'IIb':(-17.03,.93),'IIL':(-17.98,0.9),'IIP':(-16.8,.97),'IIn':(-18.62,1.48)}
-            mag,err = mag_dict[SubClassDict_SNANA[sn_typ][model._source.name]]
-            model.set_source_peakabsmag(mag,'bessellr','ab')
-            peak_amp = model.get('amplitude')
+            if use_luminosity:
+                guess_amp = False
+                sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
+                model.set(z=np.mean(zminmax))
+                mag_dict = {'Ib':(-17.9,.9),'Ic':(-18.3,.6),
+                            'IIb':(-17.03,.93),'IIL':(-17.98,0.9),'IIP':(-16.8,.97),'IIn':(-18.62,1.48)}
+                mag,err = mag_dict[SubClassDict_SNANA[sn_typ][model._source.name]]
+                model.set_source_peakabsmag(mag,'bessellr','ab')
+                peak_amp = model.get('amplitude')
             
-            model.set(z=np.max(zminmax))
-            model.set_source_peakabsmag(mag+err*3,'bessellr','ab')
-            min_amp = model.get('amplitude')
+                model.set(z=np.max(zminmax))
+                model.set_source_peakabsmag(mag+err*3,'bessellr','ab')
+                min_amp = model.get('amplitude')
 
-            model.set(z=np.min(zminmax))
-            model.set_source_peakabsmag(mag-err*3,'bessellr','ab')
-            max_amp = model.get('amplitude')
+                model.set(z=np.min(zminmax))
+                model.set_source_peakabsmag(mag-err*3,'bessellr','ab')
+                max_amp = model.get('amplitude')
             
             
-            bounds['amplitude'] = [min_amp,max_amp]
+                bounds['amplitude'] = [min_amp,max_amp]
             
-            model.set(amplitude=peak_amp)
+                model.set(amplitude=peak_amp)
 
         else :
             vparam_names = ['t0','amplitude','hostebv']
             guess_amp = True
-            if True:
+            if use_luminosity:
                 guess_amp = False
                 
                 sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
@@ -415,10 +420,13 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         def rvprior( rv ) :
             return( gauss( rv, 3.1, 0.3, range=bounds['host_rv'] ) )
         # TODO : include a proper Av or E(B-V) prior for CC models
-        if zhost and zhosterr>0.01:
-            priorfn = {'z':zprior, 'rv':rvprior }
-        else :
-            priorfn = { 'rv':rvprior}# ,'amplitude':ampprior}
+        #if use_priors:
+        #    if zhost and zhosterr>0.01:
+        #        priorfn = {'z':zprior, 'rv':rvprior }
+        #    else :
+        #        priorfn = { 'rv':rvprior}# ,'amplitude':ampprior}
+        #else:
+        #    priorfn = {}
 
     if zhosterr <.01:
         model.set(z=zhost)
@@ -446,7 +454,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     if do_coarse_run:
         res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
                                        #guess_amplitude_bound=guess_amp,
-                                       #priors=priorfn, 
+                                       priors=priorfn, 
                                        minsnr=2,
                                        #npoints=npoints, maxiter=maxiter,
                                        verbose=verbose)#,**sampling_dict)
@@ -478,7 +486,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     print(model._source.name,bounds)
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
-                               #priors=priorfn, 
+                               priors=priorfn, 
                                minsnr=2,
                                npoints=npoints, maxiter=maxiter,
                                verbose=verbose,**sampling_dict)
@@ -489,7 +497,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print ("fit2: ", time.time())
     tend = time.time()
     if verbose : print("  Total Fitting time = %.1f sec"%(tend-tstart))
-    priorfn = None
+    #priorfn = None
     return( sn, res, fit, priorfn )
 
 def get_marginal_pdfs( res, nbins=51, verbose=True ):
@@ -636,7 +644,7 @@ def plot_marginal_pdfs( res, nbins=101, **kwargs):
 
 
 def _parallel(args):
-    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run=args
+    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn=args
     print(modelsource)
     try:
     
@@ -644,7 +652,7 @@ def _parallel(args):
             sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
             t0_range=t0_range, zminmax=zminmax,
             npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict,
-            do_coarse_run=do_coarse_run)
+            do_coarse_run=do_coarse_run,use_luminosity=use_luminosity,priorfn=priorfn)
         if nsteps_pdf:
             pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
                                     verbose=max(0, verbose - 1))
@@ -690,9 +698,9 @@ def getSimTemp(theCID):
 def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              zminmax=[1.488,1.493], npoints=100, maxiter=10000,
              templateset='SNANA', excludetemplates=[],
-             nsteps_pdf=101, priors={'Ia':0.24, 'II':0.57, 'Ibc':0.19},
-             inflate_uncertainties=False,use_multi=True,
-             verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None):
+             nsteps_pdf=101, priors={'Ia':0.33, 'II':0.33, 'Ibc':0.33},
+             inflate_uncertainties=False,use_multi=True,priorfn=None,
+             verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None,use_luminosity=False):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -821,7 +829,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                     print(f"Task {args[0]} finished within the time limit.")
             
 
-            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run] for x in allmodelnames]
+            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn] for x in allmodelnames]
             manager = multiprocessing.Manager()
             res = manager.list()
             processes = []
@@ -835,7 +843,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                 p.join()
         else:
             with Pool(processes=multiprocessing.cpu_count()) as pool:
-                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run] for x in allmodelnames])
+                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn] for x in allmodelnames])
         #queue.cancel_join_thread()
         #print(queue.qsize())
         #import threading
