@@ -501,7 +501,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print ("fit2: ", time.time())
     tend = time.time()
     if verbose : print("  Total Fitting time = %.1f sec"%(tend-tstart))
-    #priorfn = None
+    priorfn = None
     return( sn, res, fit, priorfn )
 
 def get_marginal_pdfs( res, nbins=51, verbose=True ):
