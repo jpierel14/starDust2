@@ -427,6 +427,10 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         #        priorfn = { 'rv':rvprior}# ,'amplitude':ampprior}
         #else:
         #    priorfn = {}
+    if priorfn is not None:
+        priorfn = {x:priorfn[x] for x in priorfn.keys() if x in model.param_names}
+        if len(priorfn) ==0:
+            priorfn = None
 
     if zhosterr <.01:
         model.set(z=zhost)
