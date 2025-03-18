@@ -458,7 +458,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     if do_coarse_run:
         res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
                                        #guess_amplitude_bound=guess_amp,
-                                       priors=priorfn, 
+                                       #priors=priorfn, 
                                        minsnr=2,
                                        #npoints=npoints, maxiter=maxiter,
                                        verbose=verbose)#,**sampling_dict)
