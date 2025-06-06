@@ -1,7 +1,7 @@
 import pyParz as parallelize
 import sys,sncosmo,os,copy
 from astropy.table import Table
-import warnings
+import warnings,multiprocessing
 warnings.simplefilter('ignore')
 # Dictionary of sncosmo CCSN model names and their corresponding SN sub-type
 SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in SNANA)
@@ -459,7 +459,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
                                        #guess_amplitude_bound=guess_amp,
                                        #priors=priorfn, 
-                                       minsnr=2,
+                                       minsnr=0,
                                        #npoints=npoints, maxiter=maxiter,
                                        verbose=verbose)#,**sampling_dict)
         guess_amp = False
@@ -491,7 +491,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
                                priors=priorfn, 
-                               minsnr=2,
+                               minsnr=0,
                                npoints=npoints, maxiter=maxiter,
                                verbose=verbose,**sampling_dict)
     #import matplotlib.pyplot as plt
@@ -703,7 +703,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              zminmax=[1.488,1.493], npoints=100, maxiter=10000,
              templateset='SNANA', excludetemplates=[],
              nsteps_pdf=101, priors={'Ia':0.33, 'II':0.33, 'Ibc':0.33},
-             inflate_uncertainties=False,use_multi=True,priorfn=None,
+             inflate_uncertainties=False,use_multi=True,priorfn=None,ncpu=multiprocessing.cpu_count(),
              verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None,use_luminosity=False):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
@@ -734,6 +734,8 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     modelProbs = SubClassDict.copy()
     allmodelnames = np.append(np.append(iamodelnames, ibcmodelnames),
                               iimodelnames)
+
+
     if excludetemplates:
         #Removing templates for simulated data (Pass in CID of SN to exclude template)
         theCID = excludetemplates.pop()
@@ -808,19 +810,22 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     '''
 #-------------------------------------------------------------------------------
     #parallelized code
-    if use_multi:
+    if fitting_timeout is not None:
+        if not use_multi:
+            ncpu = 1
         
         import multiprocessing
         from multiprocessing import Pool
-        if fitting_timeout is not None:
+        if True:
             def worker(args,results):
                 result = _parallel(args)
                 results.append(result)
-            def run_with_timeout(args,results, timeout=fitting_timeout):
+            def run_with_timeout(args,results,sema, timeout=fitting_timeout+2):
                 """Runs a function with a timeout."""
-                process = multiprocessing.Process(target=worker, args=(args,results))
-                process.start()
-                process.join(timeout)
+                with sema:
+                    process = multiprocessing.Process(target=worker, args=(args,results))
+                    process.start()
+                    process.join(timeout)
                 
                 if process.is_alive():
                     print(f"Task {args[0]} exceeded {timeout} seconds and will be terminated.")
@@ -832,21 +837,22 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                 else:
                     print(f"Task {args[0]} finished within the time limit.")
             
-
+            
+            sema = multiprocessing.Semaphore(ncpu)
             args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn] for x in allmodelnames]
             manager = multiprocessing.Manager()
             res = manager.list()
             processes = []
             #res = []
             for args in args_list:
-                p = multiprocessing.Process(target=run_with_timeout,args=[args,res])
+                p = multiprocessing.Process(target=run_with_timeout,args=[args,res,sema])
                 processes.append(p)
                 p.start()
             
             for p in processes:
                 p.join()
         else:
-            with Pool(processes=multiprocessing.cpu_count()) as pool:
+            with Pool(processes=ncpu) as pool:
                 res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn] for x in allmodelnames])
         #queue.cancel_join_thread()
         #print(queue.qsize())
@@ -905,12 +911,15 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
 
 
     else:
+
         res = []
         for m in allmodelnames:
-           try:
-               print('trying')
-               res.append(_parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict]))
-           except RuntimeError:
+
+            try:
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn])
+                    res.append(result)
+            except concurrent.futures.TimeoutError:
                res.append(None)
     
     dt = time.time() - tstart
