@@ -927,6 +927,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         print('------------------------------')
         print("dt=%i sec" %dt)
     res={res[i]['key']:res[i] for i in range(len(res)) if res[i] is not None}
+    bestlogz_type = {'II':-np.inf,'Ibc':-np.inf,'Ia':-np.inf}
     for modelsource in allmodelnames:
         if verbose:
             print(modelsource)
@@ -939,17 +940,23 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         if res[modelsource]['res']['logz']>bestlogz :
             outdict['bestmodel'] = modelsource
             bestlogz = res[modelsource]['res']['logz']
-
+        
         # multiply the model evidence by the sub-type prior
         if modelsource in iimodelnames:
+            if res[modelsource]['res']['logz']>bestlogz_type['II']:
+                bestlogz_type['II'] = res[modelsource]['res']['logz']
             logprior = logpriordict['ii']
             logz['II'].append(logprior + res[modelsource]['res']['logz'] )
             modelProbs['ii'][modelsource] = res[modelsource]['res']['logz']
         elif modelsource in ibcmodelnames:
+            if res[modelsource]['res']['logz']>bestlogz_type['Ibc']:
+                bestlogz_type['Ibc'] = res[modelsource]['res']['logz']
             logprior = logpriordict['ibc']
             logz['Ibc'].append(logprior + res[modelsource]['res']['logz'])
             modelProbs['ibc'][modelsource] = res[modelsource]['res']['logz']
         elif modelsource in iamodelnames:
+            if res[modelsource]['res']['logz']>bestlogz_type['Ia']:
+                bestlogz_type['Ia'] = res[modelsource]['res']['logz']
             logprior = logpriordict['ia']
             logz['Ia'].append(logprior + res[modelsource]['res']['logz'])
             modelProbs['ia'][modelsource] = res[modelsource]['res']['logz']
@@ -958,6 +965,9 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         import pprint
         print(pprint.pprint(modelProbs))
 
+    for modelsource in ['II', 'Ibc', 'Ia']:
+        for i in range(len(logz[modelsource])):
+            logz[modelsource][i]-=bestlogz_type[modelsource]
 
     # sum up the evidence from all models for each sn type
     logztype = {}
@@ -969,7 +979,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
             continue
         for i in range(1, len(logz[modelsource])):
             logztype[modelsource] = np.logaddexp(
-                logztype[modelsource], logz[modelsource][i])
+                logztype[modelsource], logz[modelsource][i])+bestlogz_type[modelsource]
     
 #-------------------------------------------------------------------------------
     # define the total evidence (final denominator in Bayes theorem) and then
