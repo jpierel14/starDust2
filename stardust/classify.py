@@ -968,6 +968,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     for modelsource in ['II', 'Ibc', 'Ia']:
         for i in range(len(logz[modelsource])):
             logz[modelsource][i]-=bestlogz_type[modelsource]
+            logz[modelsource][i] = np.exp(logz[modelsource][i])
 
     # sum up the evidence from all models for each sn type
     logztype = {}
@@ -978,9 +979,9 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
             logztype[modelsource] = -np.inf
             continue
         for i in range(1, len(logz[modelsource])):
-            logztype[modelsource] = np.logaddexp(
-                logztype[modelsource], logz[modelsource][i])+bestlogz_type[modelsource]
-    
+            logztype[modelsource] += logz[modelsource][i]#np.logaddexp(
+                #logztype[modelsource], logz[modelsource][i])+bestlogz_type[modelsource]
+        logztype[modelsource] = np.log(logztype[modelsource])+bestlogz_type[modelsource]
 #-------------------------------------------------------------------------------
     # define the total evidence (final denominator in Bayes theorem) and then
     # the classification probabilities
