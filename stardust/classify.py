@@ -2,6 +2,7 @@ import pyParz as parallelize
 import sys,sncosmo,os,copy
 from astropy.table import Table
 import warnings,multiprocessing
+import pdb
 warnings.simplefilter('ignore')
 # Dictionary of sncosmo CCSN model names and their corresponding SN sub-type
 SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in SNANA)
@@ -699,12 +700,48 @@ def getSimTemp(theCID):
     print("Template not found, this classification should be skipped")
     return 0
 
+def weighted_quantile(values, quantiles, sample_weight=None,
+                      values_sorted=False, old_style=False):
+    """ Very close to numpy.percentile, but supports weights.
+    NOTE: quantiles should be in [0, 1]!
+    :param values: numpy.array with data
+    :param quantiles: array-like with many quantiles needed
+    :param sample_weight: array-like of the same length as `array`
+    :param values_sorted: bool, if True, then will avoid sorting of
+        initial array
+    :param old_style: if True, will correct output to be consistent
+        with numpy.percentile.
+    :return: numpy.array with computed quantiles.
+    """
+    values = np.array(values)
+    quantiles = np.array(quantiles)
+    if sample_weight is None:
+        sample_weight = np.ones(len(values))
+    sample_weight = np.array(sample_weight)
+    assert np.all(quantiles >= 0) and np.all(quantiles <= 1), \
+        'quantiles should be in [0, 1]'
+
+    if not values_sorted:
+        sorter = np.argsort(values)
+        values = values[sorter]
+        sample_weight = sample_weight[sorter]
+
+    weighted_quantiles = np.cumsum(sample_weight) - 0.5 * sample_weight
+    if old_style:
+        # To be convenient with numpy.percentile
+        weighted_quantiles -= weighted_quantiles[0]
+        weighted_quantiles /= weighted_quantiles[-1]
+    else:
+        weighted_quantiles /= np.sum(sample_weight)
+    return np.interp(quantiles, weighted_quantiles, values)
+
 def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              zminmax=[1.488,1.493], npoints=100, maxiter=10000,
              templateset='SNANA', excludetemplates=[],
              nsteps_pdf=101, priors={'Ia':0.33, 'II':0.33, 'Ibc':0.33},
              inflate_uncertainties=False,use_multi=True,priorfn=None,ncpu=multiprocessing.cpu_count(),
-             verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None,use_luminosity=False):
+             verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None,use_luminosity=False,
+             cut_bands_by_model='salt3-nir'):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -730,12 +767,28 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     ibcmodelnames = list(SubClassDict['ibc'].keys())
     iamodelnames = list(SubClassDict['ia'].keys())
 
+
+
+
     outdict = {}
     modelProbs = SubClassDict.copy()
     allmodelnames = np.append(np.append(iamodelnames, ibcmodelnames),
                               iimodelnames)
 
-
+    if cut_bands_by_model is not None and cut_bands_by_model in allmodelnames:
+        tempmod = sncosmo.Model(cut_bands_by_model)
+        fit_bands = np.unique(sn['band'])
+        if zhosterr<.01:
+            zmin,zmax = zhost,zhost
+        else:
+            zmin,zmax = zminmax
+        tempmod.set(z=zmin)
+        good = tempmod.bandoverlap(fit_bands)
+        tempmod.set(z=zmax)
+        good = good & tempmod.bandoverlap(fit_bands)
+        for i in range(len(fit_bands)):
+            if not good[i]:
+                sn = sn[sn['band']!=fit_bands[i]]
     if excludetemplates:
         #Removing templates for simulated data (Pass in CID of SN to exclude template)
         theCID = excludetemplates.pop()
@@ -928,11 +981,34 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         print("dt=%i sec" %dt)
     res={res[i]['key']:res[i] for i in range(len(res)) if res[i] is not None}
     bestlogz_type = {'II':-np.inf,'Ibc':-np.inf,'Ia':-np.inf}
+    tempsalt = sncosmo.Model('salt3-nir')
+    fit_bands = np.unique(sn['band'])
+    if res['salt3-nir']['sn'] is not None:
+        
+        if 'z' in res['salt3-nir']['res']['vparam_names']:
+            bestz = res['salt3-nir']['res']['samples'][np.argmax(res['salt3-nir']['res'].logl),
+                                                res['salt3-nir']['res']['vparam_names'].index('z')]
+        else:
+            bestz = zhost
+        
+
+    else:
+        bestz = zhost
+
+    tempsalt.set(z=bestz)
+    
+    salt_bands = fit_bands[tempsalt.bandoverlap(fit_bands)]
     for modelsource in allmodelnames:
         if verbose:
             print(modelsource)
         if modelsource not in res.keys() or res[modelsource]['sn'] is None:
             continue
+
+        
+        if 'salt' not in modelsource and not (np.all([x in salt_bands for x in fit_bands[res[modelsource]['fit'].bandoverlap(fit_bands)]]) and\
+                                                np.all([x in fit_bands[res[modelsource]['fit'].bandoverlap(fit_bands)] for x in salt_bands])):
+            continue
+
         outdict[modelsource] = {'sn': res[modelsource]['sn'], 
                                 'fit': res[modelsource]['fit'],
                                 'res': res[modelsource]['res'],
@@ -990,6 +1066,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     pIa = np.exp(logztype['Ia'] - logzall)
     pIbc = np.exp(logztype['Ibc'] - logzall)
     pII = np.exp(logztype['II'] - logzall)
+
     outdict['pIa'] = pIa
     outdict['pIbc'] = pIbc
     outdict['pII'] = pII
