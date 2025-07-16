@@ -3,6 +3,8 @@ import sys,sncosmo,os,copy
 from astropy.table import Table
 import warnings,multiprocessing
 import pdb
+import concurrent.futures
+
 warnings.simplefilter('ignore')
 # Dictionary of sncosmo CCSN model names and their corresponding SN sub-type
 SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in SNANA)
@@ -458,11 +460,18 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #pdb.set_trace()
     if do_coarse_run:
         res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
-                                       #guess_amplitude_bound=guess_amp,
-                                       #priors=priorfn, 
-                                       minsnr=0,
-                                       #npoints=npoints, maxiter=maxiter,
-                                       verbose=verbose)#,**sampling_dict)
+                                       guess_amplitude_bound=guess_amp,
+                                       priors=priorfn, 
+                                      minsnr=0,
+                                       npoints=npoints, maxiter=maxiter,
+                                      verbose=verbose)#,**sampling_dict)
+        # res_coarse, fit_coarse = fitting.nest_lc(sn, model, vparam_names, bounds,npoints=25,
+        #                                #guess_amplitude_bound=guess_amp,
+        #                                #priors=priorfn, 
+        #                                minsnr=0,
+        #                                #npoints=npoints, maxiter=maxiter,
+        #                                verbose=verbose)#,**sampling_dict)
+        print(modelsource,res_coarse.errors)
         guess_amp = False
         for p in vparam_names:
             minb = fit_coarse.get(p)-res_coarse.errors[p]*3
@@ -488,7 +497,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                         bounds[b][1] = zminmax[1]
 
     
-    print(model._source.name,bounds)
+    
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
                                priors=priorfn, 
@@ -964,16 +973,17 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
 
 
     else:
+        from joblib import Parallel, delayed
+        res = Parallel(n_jobs=ncpu,prefer='processes',backend="loky")(delayed(_parallel)([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn]) for m in allmodelnames)
+        # res = []
+        # for m in allmodelnames:
 
-        res = []
-        for m in allmodelnames:
-
-            try:
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn])
-                    res.append(result)
-            except concurrent.futures.TimeoutError:
-               res.append(None)
+        #     try:
+        #         with concurrent.futures.ProcessPoolExecutor() as executor:
+        #             result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn])
+        #             res.append(result)
+        #     except concurrent.futures.TimeoutError:
+        #        res.append(None)
     
     dt = time.time() - tstart
     if verbose:
