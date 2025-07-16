@@ -249,7 +249,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                  zhost=None, zhosterr=None, t0_range=None,
                  zminmax=[0.1,2.8],
                  npoints=100, maxiter=1000, verbose=True,sampling_dict={},
-                 do_coarse_run=False,use_luminosity=True,priorfn=None):
+                 do_coarse_run=False,use_luminosity=True,priorfn=None,nonzero=[]):
     """  compute the Bayesian evidence (and likelihood distributions)
     for the given SN class using the sncosmo nested sampling algorithm.
     :return:
@@ -378,11 +378,11 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                 peak_amp = model.get('amplitude')
             
                 model.set(z=np.max(zminmax))
-                model.set_source_peakabsmag(mag+err*3,'bessellr','ab')
+                model.set_source_peakabsmag(mag+err,'bessellr','ab')
                 min_amp = model.get('amplitude')
 
                 model.set(z=np.min(zminmax))
-                model.set_source_peakabsmag(mag-err*3,'bessellr','ab')
+                model.set_source_peakabsmag(mag-err,'bessellr','ab')
                 max_amp = model.get('amplitude')
             
             
@@ -403,9 +403,9 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                 mag,err = mag_dict[SubClassDict_SNANA[sn_typ][model._source.name]]
                 model.set_source_peakabsmag(mag,'bessellr','ab')
                 peak_amp = model.get('amplitude')
-                model.set_source_peakabsmag(mag+err*3,'bessellr','ab')
+                model.set_source_peakabsmag(mag+err,'bessellr','ab')
                 min_amp = model.get('amplitude')
-                model.set_source_peakabsmag(mag-err*3,'bessellr','ab')
+                model.set_source_peakabsmag(mag-err,'bessellr','ab')
                 max_amp = model.get('amplitude')
                 model.set_source_peakabsmag(mag+err,'bessellr','ab')
                 sig_amp = np.abs(model.get('amplitude')-peak_amp)
@@ -460,10 +460,10 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #pdb.set_trace()
     if do_coarse_run:
         res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
-                                       guess_amplitude_bound=guess_amp,
-                                       priors=priorfn, 
+                                       #guess_amplitude_bound=guess_amp,
+                                       #priors=priorfn, 
                                       minsnr=0,
-                                       npoints=npoints, maxiter=maxiter,
+                                       #npoints=npoints,# maxiter=maxiter,
                                       verbose=verbose)#,**sampling_dict)
         # res_coarse, fit_coarse = fitting.nest_lc(sn, model, vparam_names, bounds,npoints=25,
         #                                #guess_amplitude_bound=guess_amp,
@@ -471,11 +471,12 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         #                                minsnr=0,
         #                                #npoints=npoints, maxiter=maxiter,
         #                                verbose=verbose)#,**sampling_dict)
-        print(modelsource,res_coarse.errors)
+        
         guess_amp = False
+        
         for p in vparam_names:
-            minb = fit_coarse.get(p)-res_coarse.errors[p]*3
-            maxb = fit_coarse.get(p)+res_coarse.errors[p]*3
+            minb = fit_coarse.get(p)-(np.median(bounds[p])-bounds[p][0]/2)
+            maxb = fit_coarse.get(p)+(np.median(bounds[p])+bounds[p][1]/2)
             if p in bounds.keys():
                 
                 if minb<bounds[p][0]:
@@ -487,7 +488,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         #bounds = {p:[fit_coarse.get(p)-res_coarse.errors[p]*3,
         #            fit_coarse.get(p)+res_coarse.errors[p]*3] for p in vparam_names}
         for b in bounds.keys():
-            if b not in ['c','x1']:
+            if b in nonzero:
                 if bounds[b][0]<0:
                     bounds[b][0] = 0
                 if b=='z':
@@ -496,7 +497,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                     if bounds[b][1] >zminmax[1]:
                         bounds[b][1] = zminmax[1]
 
-    
+        
     
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
@@ -658,31 +659,31 @@ def plot_marginal_pdfs( res, nbins=101, **kwargs):
 
 
 def _parallel(args):
-    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn=args
-    print(modelsource)
-    try:
+    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero=args
+    #print(modelsource)
+    #try:
     
-        sn, res, fit, priorfn = get_evidence(
-            sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
-            t0_range=t0_range, zminmax=zminmax,
-            npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict,
-            do_coarse_run=do_coarse_run,use_luminosity=use_luminosity,priorfn=priorfn)
-        if nsteps_pdf:
-            pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
-                                    verbose=max(0, verbose - 1))
-        else:
-            pdf = None
-        #del fit._source
-        if 'salt' in modelsource:
-            fit = None
-        
-        outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
+    sn, res, fit, priorfn = get_evidence(
+        sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
+        t0_range=t0_range, zminmax=zminmax,
+        npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict,
+        do_coarse_run=do_coarse_run,use_luminosity=use_luminosity,priorfn=priorfn,nonzero=nonzero)
+    if nsteps_pdf:
+        pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
+                                verbose=max(0, verbose - 1))
+    else:
+        pdf = None
+    #del fit._source
+    if 'salt' in modelsource:
+        fit = None
+    
+    outdict = {'key':modelsource,'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn}
         #print(outdict)
-    except RuntimeError:
+    #except RuntimeError:
     #   #print(e)
-        print("Some serious problem with %s, skipping..."%modelsource)
+    #    print("Some serious problem with %s, skipping..."%modelsource)
 
-        outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
+    #    outdict= {'key':modelsource,'sn': None, 'res': None, 'fit': None,'pdf': None, 'priorfn': None}
     #({'sn': sn, 'res': res, 'fit': fit,'pdf': pdf, 'priorfn': priorfn})
     return outdict
     #return(parallelize.parReturn(outdict))
@@ -750,7 +751,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              nsteps_pdf=101, priors={'Ia':0.33, 'II':0.33, 'Ibc':0.33},
              inflate_uncertainties=False,use_multi=True,priorfn=None,ncpu=multiprocessing.cpu_count(),
              verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None,use_luminosity=False,
-             cut_bands_by_model='salt3-nir'):
+             cut_bands_by_model='salt3-nir',pkl_output_name=None,nonzero=['z'],use_joblib=False):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -901,7 +902,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
             
             
             sema = multiprocessing.Semaphore(ncpu)
-            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn] for x in allmodelnames]
+            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero] for x in allmodelnames]
             manager = multiprocessing.Manager()
             res = manager.list()
             processes = []
@@ -915,7 +916,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                 p.join()
         else:
             with Pool(processes=ncpu) as pool:
-                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn] for x in allmodelnames])
+                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero] for x in allmodelnames])
         #queue.cancel_join_thread()
         #print(queue.qsize())
         #import threading
@@ -971,19 +972,21 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         # pool.close()
         # pool.join()
 
+    elif use_joblib:
 
-    else:
+    
         from joblib import Parallel, delayed
-        res = Parallel(n_jobs=ncpu,prefer='processes',backend="loky")(delayed(_parallel)([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn]) for m in allmodelnames)
-        # res = []
-        # for m in allmodelnames:
+        res = Parallel(n_jobs=ncpu,prefer='processes',backend="loky")(delayed(_parallel)([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero]) for m in allmodelnames)
+    else:
+        res = []
+        for m in allmodelnames:
 
-        #     try:
-        #         with concurrent.futures.ProcessPoolExecutor() as executor:
-        #             result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn])
-        #             res.append(result)
-        #     except concurrent.futures.TimeoutError:
-        #        res.append(None)
+            try:
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero])
+                    res.append(result)
+            except concurrent.futures.TimeoutError:
+               res.append(None)
     
     dt = time.time() - tstart
     if verbose:
@@ -1090,6 +1093,14 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         print(pIbc)
         print("pII: "),
         print(pII)
+
+    if pkl_output_name is not None:
+        import pickle
+        outdict['salt3-nir']['fit'] = None
+        try:
+            pickle.dump(outdict,open(pkl_output_name,'wb'))
+        except:
+            print('Failed to save pickle of output.')
     return outdict
 
 def plot_maxlike_fit( fitdict, **kwarg ):
