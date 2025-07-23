@@ -305,6 +305,10 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         model = Model( source=modelsource)
         if zhosterr>0.01 :
             vparam_names = ['z','t0','x0','x1','c']
+            model.set(z=np.max(zminmax))
+            
+            bounds['t0'] = [np.max([np.min(sn['time'])-model.maxtime(),bounds['t0'][0]]),
+                        np.min([np.max(sn['time'])+np.abs(model.mintime()),bounds['t0'][1]])]
             if use_luminosity:
                 guess_amp = False
                 model.set(z=np.mean(zminmax))
@@ -346,6 +350,9 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         bounds['x1'] = (-2.,2.)
         # bounds['c'] = (-0.5,3.0)
         bounds['c'] = (-1,1.0)  # fat red tail
+
+        bounds['t0'] = [np.max([np.min(sn['time'])-model.maxtime(),bounds['t0'][0]]),
+                        np.min([np.max(sn['time'])+np.abs(model.mintime()),bounds['t0'][1]])]
         def x1prior( x1 ) :
             return( gauss( x1, 0, [-1,1], range=bounds['x1'] ) )
         def cprior( c ) :
@@ -367,6 +374,11 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
 
         if zhosterr>0.01 :
             vparam_names = ['z','t0','amplitude','hostebv']
+            model.set(z=np.max(zminmax))
+
+            bounds['t0'] = [np.max([np.min(sn['time'])-model.maxtime(),bounds['t0'][0]]),
+                        np.min([np.max(sn['time'])+np.abs(model.mintime()),bounds['t0'][1]])]
+
             if use_luminosity:
                 guess_amp = False
                 sn_typ = [x for x in SubClassDict_SNANA.keys() if model._source.name in SubClassDict_SNANA[x].keys()][0]
@@ -420,6 +432,8 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         # bounds['hostebv'] = (0.0,1.0)
         bounds['hostebv'] = (0,1.0) # fat red tail
         bounds['hostr_v'] = (2.0,4.0)
+        bounds['t0'] = [np.max([np.min(sn['time'])-model.maxtime(),bounds['t0'][0]]),
+                        np.min([np.max(sn['time'])+np.abs(model.mintime()),bounds['t0'][1]])]
         def rvprior( rv ) :
             return( gauss( rv, 3.1, 0.3, range=bounds['host_rv'] ) )
         # TODO : include a proper Av or E(B-V) prior for CC models
@@ -458,6 +472,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
     #print(model.parameters)
     #print(sn)
     #pdb.set_trace()
+    
     if do_coarse_run:
         res_coarse, fit_coarse = fitting.fit_lc(sn, model, vparam_names, bounds,
                                        #guess_amplitude_bound=guess_amp,
