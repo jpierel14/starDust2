@@ -34,6 +34,9 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                                     'snana-2007pg':'IIP',  # sdss020038
                                     'snana-2006ez':'IIn',  # sdss012842
                                     'snana-2006ix':'IIn',  # sdss013449
+                                    #'nugent-sn2p':'IIP',
+                                    #'nugent-sn2n':'IIP'
+                                    #'midir_ia':'IIn'
                                 },
                           'ibc':{    'snana-2004fe':'Ic',
                                      'snana-2004gq':'Ic',
@@ -249,7 +252,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                  zhost=None, zhosterr=None, t0_range=None,
                  zminmax=[0.1,2.8],
                  npoints=100, maxiter=1000, verbose=True,sampling_dict={},
-                 do_coarse_run=False,use_luminosity=True,priorfn=None,nonzero=[]):
+                 do_coarse_run=False,use_luminosity=True,priorfn=None,nonzero=[],allow_phase_extrapolation=True):
     """  compute the Bayesian evidence (and likelihood distributions)
     for the given SN class using the sncosmo nested sampling algorithm.
     :return:
@@ -300,11 +303,18 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         bounds={'z':(zminmax[0],zminmax[1]),'t0':(t0_range[0],t0_range[1]) }
     else :
         bounds={'t0':(t0_range[0],t0_range[1]) }
+    guess_amp = True
+
     if modelsource.lower().startswith('salt') :
         # define the Ia SALT2 model parameter bounds and priors
-        model = Model( source=modelsource)
+        model = Model( source=modelsource,allow_phase_extrapolation=allow_phase_extrapolation)
         if zhosterr>0.01 :
-            vparam_names = ['z','t0','x0','x1','c']
+            # Only fit x1 if source has multiple epochs
+            if np.max(sn['time'])-np.min(sn['time']) > 5:
+                vparam_names = ['z','t0','x0','x1','c']
+            else:
+                vparam_names = ['z','t0','x0','c']
+                print('Single-epoch source: not fitting for x1')
             model.set(z=np.max(zminmax))
             
             bounds['t0'] = [np.max([np.min(sn['time'])-model.maxtime(),bounds['t0'][0]]),
@@ -326,8 +336,14 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                 bounds['x0'] = [min_x0,max_x0]
                 model.set(x0=peak_x0)
         else :
-            vparam_names = ['t0','x0','x1','c']
+            # Only fit x1 if source has multiple epochs
+            if np.max(sn['time'])-np.min(sn['time']) > 5:
+                vparam_names = ['t0','x0','x1','c']
+            else:
+                vparam_names = ['t0','x0','c']
+                print('Single-epoch source: not fitting for x1')
             guess_amp = True
+            model.set(z=zhost)
             if use_luminosity:
                 guess_amp = False
                 
@@ -349,8 +365,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                 model.set(x0=peak_x0)
         bounds['x1'] = (-2.,2.)
         # bounds['c'] = (-0.5,3.0)
-        bounds['c'] = (-1,1.0)  # fat red tail
-
+        bounds['c'] = (-.3,.3)  # fat red tail
         bounds['t0'] = [np.max([np.min(sn['time'])-model.maxtime(),bounds['t0'][0]]),
                         np.min([np.max(sn['time'])+np.abs(model.mintime()),bounds['t0'][1]])]
         def x1prior( x1 ) :
@@ -369,8 +384,14 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         # define a host-galaxy dust model
         dust = CCM89Dust( )
         # Define the CC model, parameter bounds and priors
-        model = Model( source=modelsource, effects=[dust],
-                               effect_names=['host'], effect_frames=['rest'])
+        if modelsource=='midir_ia':
+            x,y,f = sncosmo.read_griddata_ascii('/astro/armin/cdecoursey/salt3-mir_model.dat')
+            model = Model(source=sncosmo.TimeSeriesSource(x,y,f),effects=[dust],
+                               effect_names=['host'], effect_frames=['rest'],allow_phase_extrapolation=allow_phase_extrapolation)
+            model._source.name = 'midir_ia'
+        else:
+            model = Model( source=modelsource, effects=[dust],
+                               effect_names=['host'], effect_frames=['rest'],allow_phase_extrapolation=allow_phase_extrapolation)
 
         if zhosterr>0.01 :
             vparam_names = ['z','t0','amplitude','hostebv']
@@ -405,6 +426,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         else :
             vparam_names = ['t0','amplitude','hostebv']
             guess_amp = True
+            model.set(z=zhost)
             if use_luminosity:
                 guess_amp = False
                 
@@ -459,7 +481,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
         print('skip')
         return None
     #print(model.parameters)
-    #print(bounds,guess_amp)
+    
 
     #if 'amplitude' in vparam_names and 'amplitude' not in bounds.keys():
     #    bounds['amplitude'] = (1e-25,1e-10)
@@ -511,8 +533,6 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                         bounds[b][0] = zminmax[0]
                     if bounds[b][1] >zminmax[1]:
                         bounds[b][1] = zminmax[1]
-
-        
     
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
@@ -520,6 +540,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                                minsnr=0,
                                npoints=npoints, maxiter=maxiter,
                                verbose=verbose,**sampling_dict)
+
     #import matplotlib.pyplot as plt
     #sncosmo.plot_lc(sn,fit)
     #plt.show()
@@ -674,7 +695,7 @@ def plot_marginal_pdfs( res, nbins=101, **kwargs):
 
 
 def _parallel(args):
-    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero=args
+    modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero,allow_phase_extrapolation=args
     #print(modelsource)
     #try:
     
@@ -682,7 +703,7 @@ def _parallel(args):
         sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
         t0_range=t0_range, zminmax=zminmax,
         npoints=npoints, maxiter=maxiter, verbose=max(0, verbose - 1),sampling_dict=sampling_dict,
-        do_coarse_run=do_coarse_run,use_luminosity=use_luminosity,priorfn=priorfn,nonzero=nonzero)
+        do_coarse_run=do_coarse_run,use_luminosity=use_luminosity,priorfn=priorfn,nonzero=nonzero,allow_phase_extrapolation=allow_phase_extrapolation)
     if nsteps_pdf:
         pdf = get_marginal_pdfs(res, nbins=nsteps_pdf,
                                 verbose=max(0, verbose - 1))
@@ -766,7 +787,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
              nsteps_pdf=101, priors={'Ia':0.33, 'II':0.33, 'Ibc':0.33},
              inflate_uncertainties=False,use_multi=True,priorfn=None,ncpu=multiprocessing.cpu_count(),
              verbose=True,sampling_dict={},do_coarse_run=False,fitting_timeout=None,use_luminosity=False,
-             cut_bands_by_model='salt3-nir',pkl_output_name=None,nonzero=['z'],use_joblib=False):
+             cut_bands_by_model='salt3-nir',pkl_output_name=None,nonzero=['z'],use_joblib=False,allow_phase_extrapolation=True):
     """  Collect the bayesian evidence for all SN sub-classes.
     :param sn:
     :param zhost:
@@ -917,7 +938,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
             
             
             sema = multiprocessing.Semaphore(ncpu)
-            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero] for x in allmodelnames]
+            args_list = [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero,allow_phase_extrapolation] for x in allmodelnames]
             manager = multiprocessing.Manager()
             res = manager.list()
             processes = []
@@ -931,7 +952,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                 p.join()
         else:
             with Pool(processes=ncpu) as pool:
-                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero] for x in allmodelnames])
+                res = pool.map(_parallel, [[x,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero,allow_phase_extrapolation] for x in allmodelnames])
         #queue.cancel_join_thread()
         #print(queue.qsize())
         #import threading
@@ -991,14 +1012,14 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
 
     
         from joblib import Parallel, delayed
-        res = Parallel(n_jobs=ncpu,prefer='processes',backend="loky")(delayed(_parallel)([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero]) for m in allmodelnames)
+        res = Parallel(n_jobs=ncpu,prefer='processes',backend="loky")(delayed(_parallel)([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero,allow_phase_extrapolation]) for m in allmodelnames)
     else:
         res = []
         for m in allmodelnames:
 
             try:
                 with concurrent.futures.ProcessPoolExecutor() as executor:
-                    result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero])
+                    result = _parallel([m,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero,allow_phase_extrapolation])
                     res.append(result)
             except concurrent.futures.TimeoutError:
                res.append(None)
@@ -1026,6 +1047,8 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     tempsalt.set(z=bestz)
     
     salt_bands = fit_bands[tempsalt.bandoverlap(fit_bands)]
+    from scipy.special import logsumexp
+
     for modelsource in allmodelnames:
         if verbose:
             print(modelsource)
@@ -1069,28 +1092,31 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         import pprint
         print(pprint.pprint(modelProbs))
 
-    for modelsource in ['II', 'Ibc', 'Ia']:
-        for i in range(len(logz[modelsource])):
-            logz[modelsource][i]-=bestlogz_type[modelsource]
-            logz[modelsource][i] = np.exp(logz[modelsource][i])
+    #for modelsource in ['II', 'Ibc', 'Ia']:
+    #    for i in range(len(logz[modelsource])):
+    #        logz[modelsource][i]-=bestlogz_type[modelsource]
+            #logz[modelsource][i] = np.exp(logz[modelsource][i])
 
     # sum up the evidence from all models for each sn type
     logztype = {}
     for modelsource in ['II', 'Ibc', 'Ia']:
         try:
-            logztype[modelsource] = logz[modelsource][0]
+            logztype[modelsource] = [logz[modelsource][0]]
         except:
             logztype[modelsource] = -np.inf
             continue
         for i in range(1, len(logz[modelsource])):
-            logztype[modelsource] += logz[modelsource][i]#np.logaddexp(
+            logztype[modelsource] = np.logaddexp(logztype[modelsource], logz[modelsource][i])
+            #logztype[modelsource] += logz[modelsource][i]#np.logaddexp(
                 #logztype[modelsource], logz[modelsource][i])+bestlogz_type[modelsource]
-        logztype[modelsource] = np.log(logztype[modelsource])+bestlogz_type[modelsource]
+        nmodels = len(logz[modelsource])
+        #logztype[modelsource] = np.log(logztype[modelsource])+bestlogz_type[modelsource]
+        logztype[modelsource] = logsumexp(logztype[modelsource])-np.log(nmodels)
 #-------------------------------------------------------------------------------
     # define the total evidence (final denominator in Bayes theorem) and then
     # the classification probabilities
-    logzall = np.logaddexp(np.logaddexp(
-        logztype['Ia'], logztype['Ibc']), logztype['II'])
+
+    logzall = logsumexp([logztype['Ia'], logztype['Ibc'], logztype['II']])
     pIa = np.exp(logztype['Ia'] - logzall)
     pIbc = np.exp(logztype['Ibc'] - logzall)
     pII = np.exp(logztype['II'] - logzall)
@@ -1108,7 +1134,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
         print(pIbc)
         print("pII: "),
         print(pII)
-
+    
     if pkl_output_name is not None:
         import pickle
         outdict['salt3-nir']['fit'] = None
