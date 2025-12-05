@@ -34,8 +34,8 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                                     'snana-2007pg':'IIP',  # sdss020038
                                     'snana-2006ez':'IIn',  # sdss012842
                                     'snana-2006ix':'IIn',  # sdss013449
-                                    #'nugent-sn2p':'IIP',
-                                    #'nugent-sn2n':'IIP'
+                                    'nugent-sn2p':'IIP',
+                                    'nugent-sn2n':'IIP'
                                     #'midir_ia':'IIn'
                                 },
                           'ibc':{    'snana-2004fe':'Ic',
@@ -53,6 +53,7 @@ SubClassDict_SNANA = {    'ii':{    'snana-2007ms':'IIP',  # sdss017458 (Ic in S
                                      'snana-2005hm':'Ib',   # sdss002744 PSNID
                                      'snana-2006jo':'Ib',   # sdss014492 PSNID
                                      'snana-2007nc':'Ib',   # sdss019323
+                                     'nugent-sn1bc':'Ib'
                                  },
                           'ia': {'salt3-nir':'Ia'},
                       }
@@ -534,6 +535,7 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                     if bounds[b][1] >zminmax[1]:
                         bounds[b][1] = zminmax[1]
     
+
     res, fit = fitting.nest_lc(sn, model, vparam_names, bounds,
                                guess_amplitude_bound=guess_amp,
                                priors=priorfn, 
@@ -541,9 +543,11 @@ def get_evidence(sn=testsnIa, modelsource='salt2',
                                npoints=npoints, maxiter=maxiter,
                                verbose=verbose,**sampling_dict)
 
-    #import matplotlib.pyplot as plt
-    #sncosmo.plot_lc(sn,fit)
-    #plt.show()
+    # if '2006fo' in modelsource:
+    #     print('YESSSS:LSKDJF:LSJFD:LSDKJFLSDJF')
+    #     import matplotlib.pyplot as plt
+    #     sncosmo.plot_lc(sn,fit)
+    #     plt.savefig('test')
 
     #print ("fit2: ", time.time())
     tend = time.time()
@@ -698,7 +702,7 @@ def _parallel(args):
     modelsource,verbose,sn,zhost,zhosterr,t0_range,zminmax,npoints,maxiter,nsteps_pdf,excludetemplates,sampling_dict,do_coarse_run,use_luminosity,priorfn,nonzero,allow_phase_extrapolation=args
     #print(modelsource)
     #try:
-    
+
     sn, res, fit, priorfn = get_evidence(
         sn, modelsource=modelsource, zhost=zhost, zhosterr=zhosterr,
         t0_range=t0_range, zminmax=zminmax,
@@ -847,9 +851,9 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
                     allmodelnames = np.array(allmodelnamelist)
 
     logpriordict = {
-        'ia': np.log(priors['Ia']/len(iamodelnames)),
-        'ibc': np.log(priors['Ibc']/len(ibcmodelnames)),
-        'ii': np.log(priors['II']/len(iimodelnames)),
+        'ia': 0,#np.log(priors['Ia']/len(iamodelnames)),
+        'ibc': 0,#np.log(priors['Ibc']/len(ibcmodelnames)),
+        'ii': 0#np.log(priors['II']/len(iimodelnames)),
         }
     logz = {'Ia': [], 'II': [], 'Ibc': []}
     bestlogz = -np.inf
@@ -857,6 +861,7 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
     if inflate_uncertainties:
         sn = inflateUncert(sn)
 
+    #pdb.set_trace()
 #-------------------------------------------------------------------------------
     '''
     #serial code
@@ -1056,8 +1061,8 @@ def classify(sn, zhost=1.491, zhosterr=0.003, t0_range=None,
             continue
 
         
-        if 'salt' not in modelsource and not (np.all([x in salt_bands for x in fit_bands[res[modelsource]['fit'].bandoverlap(fit_bands)]]) and\
-                                                np.all([x in fit_bands[res[modelsource]['fit'].bandoverlap(fit_bands)] for x in salt_bands])):
+        if cut_bands_by_model is not None and ('salt' not in modelsource and not (np.all([x in salt_bands for x in fit_bands[res[modelsource]['fit'].bandoverlap(fit_bands)]]) and\
+                                                np.all([x in fit_bands[res[modelsource]['fit'].bandoverlap(fit_bands)] for x in salt_bands]))):
             continue
 
         outdict[modelsource] = {'sn': res[modelsource]['sn'], 
